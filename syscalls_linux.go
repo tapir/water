@@ -48,8 +48,8 @@ func newTAP(config Config) (ifce *Interface, err error) {
 	if err = setDeviceOptions(fd, config); err != nil {
 		return nil, err
 	}
-
-	ifce = &Interface{isTAP: true, ReadWriteCloser: os.NewFile(fd, "tun"), name: name}
+	f := os.NewFile(fd, "tun")
+	ifce = &Interface{isTAP: true, ReadWriteCloser: f, file: f, name: name}
 	return
 }
 
@@ -73,8 +73,8 @@ func newTUN(config Config) (ifce *Interface, err error) {
 	if err = setDeviceOptions(fd, config); err != nil {
 		return nil, err
 	}
-
-	ifce = &Interface{isTAP: false, ReadWriteCloser: os.NewFile(fd, "tun"), name: name}
+	f := os.NewFile(fd, "tun")
+	ifce = &Interface{isTAP: false, ReadWriteCloser: f, file: f, name: name}
 	return
 }
 

@@ -114,13 +114,14 @@ func newTUN(config Config) (ifce *Interface, err error) {
 	if err = syscall.SetNonblock(fd, true); err != nil {
 		return nil, fmt.Errorf("setting non-blocking error")
 	}
-
+	f := os.NewFile(uintptr(fd), string(ifName.name[:]))
 	return &Interface{
 		isTAP: false,
 		name:  string(ifName.name[:ifNameSize-1 /* -1 is for \0 */]),
 		ReadWriteCloser: &tunReadCloser{
-			f: os.NewFile(uintptr(fd), string(ifName.name[:])),
+			f: f,
 		},
+		file: f,
 	}, nil
 }
 
