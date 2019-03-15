@@ -36,7 +36,8 @@ func TestBroadcastTAP(t *testing.T) {
 		t.Fatalf("creating TAP error: %v\n", err)
 	}
 
-	setupIfce(t, net.IPNet{IP: self, Mask: mask}, ifce.Name())
+	name, _ := ifce.Name()
+	setupIfce(t, net.IPNet{IP: self, Mask: mask}, name)
 	startBroadcast(t, brd)
 
 	dataCh := make(chan []byte, 8)

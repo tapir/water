@@ -88,8 +88,8 @@ func (ifce *Interface) IsTAP() bool {
 }
 
 // Name returns the interface name of ifce, e.g. tun0, tap1, tun0, etc..
-func (ifce *Interface) Name() string {
-	return ifce.name
+func (ifce *Interface) Name() (string, error) {
+	return ifce.name, nil
 }
 
 // File returns the underlying file descriptor
@@ -99,7 +99,8 @@ func (ifce *Interface) File() *os.File {
 
 // MTU returns MTU of the device
 func (ifce *Interface) MTU() (int, error) {
-	return mtu(ifce.Name())
+	name, _ := ifce.Name()
+	return mtu(name)
 }
 
 // Events is not implemented
