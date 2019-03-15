@@ -1,10 +1,15 @@
 package water
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.zx2c4.com/wireguard/tun"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -49,7 +54,14 @@ func newTAP(config Config) (ifce *Interface, err error) {
 		return nil, err
 	}
 	f := os.NewFile(fd, "tun")
-	ifce = &Interface{isTAP: true, ReadWriteCloser: f, file: f, name: name}
+
+	err = setMTU(config.MTU, name)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+
+	ifce = &Interface{isTAP: true, file: f, name: name, events: make(chan tun.TUNEvent, 5)}
 	return
 }
 
@@ -74,7 +86,30 @@ func newTUN(config Config) (ifce *Interface, err error) {
 		return nil, err
 	}
 	f := os.NewFile(fd, "tun")
-	ifce = &Interface{isTAP: false, ReadWriteCloser: f, file: f, name: name}
+
+	err = setMTU(config.MTU, name)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+
+	events := make(chan tun.TUNEvent, 5)
+	go func() {
+		for {
+			select {
+			case ev := <-events:
+				if ev == 0 {
+					break
+				} else if ev == tun.TUNEventMTUUpdate {
+					setMTU(config.MTU, name)
+				} else {
+					// not implemented
+				}
+			}
+		}
+	}()
+
+	ifce = &Interface{isTAP: false, file: f, name: name, events: events}
 	return
 }
 
@@ -108,4 +143,57 @@ func setDeviceOptions(fd uintptr, config Config) (err error) {
 		value = 1
 	}
 	return ioctl(fd, syscall.TUNSETPERSIST, uintptr(value))
+}
+
+func mtu(name string) (int, error) {
+	fd, err := unix.Socket(
+		unix.AF_INET,
+		unix.SOCK_DGRAM,
+		0,
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer unix.Close(fd)
+
+	var ifr [unix.IFNAMSIZ + 64]byte
+	copy(ifr[:], name)
+	_, _, errno := unix.Syscall(
+		unix.SYS_IOCTL,
+		uintptr(fd),
+		uintptr(unix.SIOCGIFMTU),
+		uintptr(unsafe.Pointer(&ifr[0])),
+	)
+	if errno != 0 {
+		return 0, errors.New("failed to get MTU of TUN device: " + errno.Error())
+	}
+
+	return int(*(*int32)(unsafe.Pointer(&ifr[unix.IFNAMSIZ]))), nil
+}
+
+func setMTU(n int, name string) error {
+	fd, err := unix.Socket(
+		unix.AF_INET,
+		unix.SOCK_DGRAM,
+		0,
+	)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+
+	var ifr [unix.IFNAMSIZ + 64]byte
+	copy(ifr[:], name)
+	*(*uint32)(unsafe.Pointer(&ifr[unix.IFNAMSIZ])) = uint32(n)
+	_, _, errno := unix.Syscall(
+		unix.SYS_IOCTL,
+		uintptr(fd),
+		uintptr(unix.SIOCSIFMTU),
+		uintptr(unsafe.Pointer(&ifr[0])),
+	)
+	if errno != 0 {
+		return errors.New("failed to set MTU of TUN device")
+	}
+
+	return nil
 }

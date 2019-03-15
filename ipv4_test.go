@@ -12,7 +12,7 @@ func startRead(ch chan<- []byte, ifce *Interface) {
 	go func() {
 		for {
 			buffer := make([]byte, BUFFERSIZE)
-			n, err := ifce.Read(buffer)
+			n, err := ifce.Read(buffer, 0)
 			if err == nil {
 				buffer = buffer[:n:n]
 				ch <- buffer
@@ -29,7 +29,7 @@ func TestCloseUnblockPendingRead(t *testing.T) {
 
 	c := make(chan struct{})
 	go func() {
-		ifce.Read(make([]byte, 1<<16))
+		ifce.Read(make([]byte, 1<<16), 0)
 		close(c)
 	}()
 

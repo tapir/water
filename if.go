@@ -2,8 +2,9 @@ package water
 
 import (
 	"errors"
-	"io"
 	"os"
+
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 // Interface is a TUN/TAP interface.
@@ -12,10 +13,10 @@ import (
 // interfaces to send/receive packet in parallel.
 // Kernel document about MultiQueue: https://www.kernel.org/doc/Documentation/networking/tuntap.txt
 type Interface struct {
-	isTAP bool
-	io.ReadWriteCloser
-	file *os.File
-	name string
+	isTAP  bool
+	file   *os.File
+	name   string
+	events chan tun.TUNEvent
 }
 
 // DeviceType is the type for specifying device types.
@@ -32,6 +33,9 @@ const (
 // used when the device is initialized. A zero-value Config is a valid
 // configuration.
 type Config struct {
+	// MTU of the device
+	MTU int
+
 	// DeviceType specifies whether the device is a TUN or TAP interface. A
 	// zero-value is treated as TUN.
 	DeviceType DeviceType
@@ -43,6 +47,7 @@ type Config struct {
 
 func defaultConfig() Config {
 	return Config{
+		MTU:                    1420,
 		DeviceType:             TUN,
 		PlatformSpecificParams: defaultPlatformSpecificParams(),
 	}
@@ -52,11 +57,15 @@ var zeroConfig Config
 
 // New creates a new TUN/TAP interface using config.
 func New(config Config) (ifce *Interface, err error) {
+	dconf := defaultConfig()
 	if zeroConfig == config {
-		config = defaultConfig()
+		config = dconf
 	}
 	if config.PlatformSpecificParams == zeroConfig.PlatformSpecificParams {
 		config.PlatformSpecificParams = defaultPlatformSpecificParams()
+	}
+	if config.MTU == 0 {
+		config.MTU = dconf.MTU
 	}
 	switch config.DeviceType {
 	case TUN:
@@ -86,4 +95,31 @@ func (ifce *Interface) Name() string {
 // File returns the underlying file descriptor
 func (ifce *Interface) File() *os.File {
 	return ifce.file
+}
+
+// MTU returns MTU of the device
+func (ifce *Interface) MTU() (int, error) {
+	return mtu(ifce.Name())
+}
+
+// Events is not implemented
+func (ifce *Interface) Events() chan tun.TUNEvent {
+	return ifce.events
+}
+
+// Read reads a packet from the device (without any additional headers)
+func (ifce *Interface) Read(buff []byte, offset int) (int, error) {
+	return ifce.file.Read(buff[offset:])
+}
+
+// Write writes a packet to the device (without any additional headers)
+func (ifce *Interface) Write(buff []byte, offset int) (int, error) {
+	buff = buff[offset:]
+	return ifce.file.Write(buff)
+}
+
+// Close closes device and events
+func (ifce *Interface) Close() error {
+	close(ifce.events)
+	return ifce.file.Close()
 }
