@@ -61,7 +61,23 @@ func newTAP(config Config) (ifce *Interface, err error) {
 		return nil, err
 	}
 
-	ifce = &Interface{isTAP: true, file: f, name: name, events: make(chan tun.TUNEvent, 5)}
+	events := make(chan tun.TUNEvent, 5)
+	go func() {
+		for {
+			select {
+			case ev := <-events:
+				if ev == 0 {
+					break
+				} else if ev == tun.TUNEventMTUUpdate {
+					setMTU(config.MTU, name)
+				} else {
+					// not implemented
+				}
+			}
+		}
+	}()
+
+	ifce = &Interface{isTAP: true, file: f, name: name, events: events}
 	return
 }
 
